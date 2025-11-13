@@ -1,11 +1,12 @@
-from fastmcp import FastMCP
-
-mcp = FastMCP("Demo 🚀")
-
-@mcp.tool
-def add(a: int, b: int) -> int:
-    """Add two numbers"""
-    return a + b
-
-if __name__ == "__main__":
-    mcp.run()
+pandas
+requests
+beautifulsoup4
+numpy
+google-genai
+pdfplumber
+pydantic
+openpyxl
+fastmcp
+scikit-learn
+python-dotenv
+python-docx
