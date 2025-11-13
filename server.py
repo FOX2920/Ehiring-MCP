@@ -143,6 +143,15 @@ def get_job_descriptions(api_key, use_cache=True):
         return results
     return []
 
+def extract_message(evaluations):
+    """Trích xuất nội dung văn bản từ đánh giá HTML"""
+    if isinstance(evaluations, list) and len(evaluations) > 0:
+        raw_html = evaluations[0].get('content', '')
+        soup = BeautifulSoup(raw_html, "html.parser")
+        text = " ".join(soup.stripped_strings)
+        return text
+    return None
+
 def remove_html_tags(text):
     """Bỏ HTML tags và chuyển đổi thành text thuần túy"""
     if not text:
@@ -368,7 +377,7 @@ def get_offer_letter(candidate_id, api_key):
                     text = None  # File .doc cũ, không hỗ trợ
                 
                 if text:
-        return {
+                    return {
                         "url": file_url,
                         "name": file_name,
                         "text": text
@@ -651,6 +660,8 @@ def get_candidates_for_opening(opening_id, api_key, start_date=None, end_date=No
             
             # Xử lý evaluations để lấy reviews chi tiết
             reviews = process_evaluations(candidate.get('evaluations', []))
+            # Giữ lại review cũ (text đơn giản) để tương thích ngược
+            review = extract_message(candidate.get('evaluations', []))
             
             form_data = {}
             if 'form' in candidate and isinstance(candidate['form'], list):
@@ -669,7 +680,8 @@ def get_candidates_for_opening(opening_id, api_key, start_date=None, end_date=No
                 "gender": candidate.get('gender'),
                 "cv_url": cv_url,
                 "cv_text": cv_text,
-                "reviews": reviews,
+                "review": review,  # Giữ lại để tương thích ngược
+                "reviews": reviews,  # Danh sách reviews chi tiết với tên, chức danh, nội dung
                 "form_data": form_data,
                 "opening_id": opening_id,
                 "stage_id": candidate.get('stage_id'),
@@ -689,6 +701,9 @@ def get_interviews(api_key, start_date=None, end_date=None, opening_id=None, fil
     payload = {
         'access_token': api_key,
     }
+    
+    # Không truyền start_date/end_date vào API Base, sẽ lọc sau khi chuyển đổi time_dt
+    # Chỉ dùng để API Base lọc sơ bộ nếu cần
     
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     
