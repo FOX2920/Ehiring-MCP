@@ -875,6 +875,35 @@ def get_feedback_data_from_google_sheet():
         # Nếu có lỗi, trả về None
         return None
 
+def get_opening_stages(opening_id, api_key):
+    """Lấy danh sách tên các vòng (stages) của một opening từ Base API"""
+    if not opening_id or not api_key:
+        return []
+    
+    try:
+        url = "https://hiring.base.vn/publicapi/v2/opening/get"
+        payload = {
+            'access_token': api_key,
+            'id': opening_id
+        }
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        
+        response = requests.post(url, headers=headers, data=payload, timeout=15)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # Trích xuất danh sách stages từ opening.stats.stages
+        stages_list = result.get('opening', {}).get('stats', {}).get('stages', [])
+        
+        # Chỉ lấy tên của các stages
+        stage_names = [stage.get('name', '') for stage in stages_list if stage.get('name')]
+        
+        return stage_names
+    except Exception as e:
+        # Nếu có lỗi, trả về list rỗng
+        return []
+
 def get_candidate_details(candidate_id, api_key):
     """Lấy và xử lý dữ liệu chi tiết ứng viên từ API Base.vn, trả về JSON phẳng"""
     url = "https://hiring.base.vn/publicapi/v2/candidate/get"
@@ -1020,13 +1049,17 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
                 "openings": openings
             }
         
+        # Lấy danh sách stages cho opening này
+        stages = get_opening_stages(opening_id, BASE_API_KEY)
+        
         return {
             "success": True,
             "query": opening_name_or_id,
             "opening_id": opening_id,
             "opening_name": matched_name,
             "similarity_score": similarity_score,
-            "job_description": jd['job_description']
+            "job_description": jd['job_description'],
+            "stages": stages
         }
     except Exception as e:
         raise Exception(f"Lỗi khi lấy JD: {str(e)}")
@@ -1467,7 +1500,12 @@ def get_openings_list() -> str:
         
         result = "Danh sách các vị trí tuyển dụng đang hoạt động:\n\n"
         for opening in openings:
+            # Lấy danh sách stages cho từng opening
+            stages = get_opening_stages(opening['id'], BASE_API_KEY)
+            stages_str = ", ".join(stages) if stages else "Không có thông tin vòng"
+            
             result += f"- ID: {opening['id']}, Tên: {opening['name']}\n"
+            result += f"  Các vòng: {stages_str}\n\n"
         
         return result
     except Exception as e:
