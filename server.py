@@ -880,7 +880,12 @@ def get_candidate_details(candidate_id, api_key):
 # MCP Tools
 # =================================================================
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_job_description",
+    description="Lấy JD (Job Description) theo opening_name hoặc opening_id.",
+    tags={"hiring", "job", "description"},
+    annotations={"readOnlyHint": True}
+)
 def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Lấy JD (Job Description) theo opening_name hoặc opening_id. 
@@ -953,7 +958,12 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
     except Exception as e:
         raise Exception(f"Lỗi khi lấy JD: {str(e)}")
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_candidates_by_opening",
+    description="Lấy tất cả ứng viên theo opening_name hoặc opening_id (bao gồm cv_text).",
+    tags={"hiring", "candidate", "list"},
+    annotations={"readOnlyHint": True}
+)
 def get_candidates_by_opening(
     opening_name_or_id: str,
     start_date: Optional[str] = None,
@@ -1016,7 +1026,12 @@ def get_candidates_by_opening(
     except Exception as e:
         raise Exception(f"Lỗi khi lấy ứng viên: {str(e)}")
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_interviews_by_opening",
+    description="Lấy lịch phỏng vấn, có thể lọc theo opening_name hoặc opening_id.",
+    tags={"hiring", "interview", "schedule"},
+    annotations={"readOnlyHint": True}
+)
 def get_interviews_by_opening(
     opening_name_or_id: Optional[str] = None,
     date: Optional[str] = None,
@@ -1073,7 +1088,12 @@ def get_interviews_by_opening(
     except Exception as e:
         raise Exception(f"Lỗi khi lấy lịch phỏng vấn: {str(e)}")
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_candidate_details",
+    description="Lấy chi tiết ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name.",
+    tags={"hiring", "candidate", "detail"},
+    annotations={"readOnlyHint": True}
+)
 def get_candidate_details_tool(
     candidate_id: Optional[str] = None,
     opening_name_or_id: Optional[str] = None,
@@ -1183,7 +1203,12 @@ def get_candidate_details_tool(
     except Exception as e:
         raise Exception(f"Lỗi khi lấy chi tiết ứng viên: {str(e)}")
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_offer_letter",
+    description="Lấy offer letter của ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name.",
+    tags={"hiring", "candidate", "offer"},
+    annotations={"readOnlyHint": True}
+)
 def get_offer_letter_tool(
     candidate_id: Optional[str] = None,
     opening_name_or_id: Optional[str] = None,
@@ -1314,7 +1339,12 @@ def get_offer_letter_tool(
     except Exception as e:
         raise Exception(f"Lỗi khi lấy bài test: {str(e)}")
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(
+    name="get_server_status",
+    description="Kiểm tra trạng thái Base Hiring MCP server.",
+    tags={"system", "status"},
+    annotations={"readOnlyHint": True}
+)
 def get_server_status() -> Dict[str, str]:
     """Kiểm tra trạng thái Base Hiring MCP server."""
     return {
