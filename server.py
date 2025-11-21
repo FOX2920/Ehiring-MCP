@@ -802,6 +802,34 @@ def get_test_results_from_google_sheet(candidate_id):
         # Nếu có lỗi, trả về None (không làm gián đoạn flow chính)
         return None
 
+def get_all_test_results_raw():
+    """Lấy tất cả dữ liệu bài test từ Google Sheet (raw data)"""
+    if not GOOGLE_SHEET_SCRIPT_URL:
+        return None
+    
+    try:
+        # Giả sử script hỗ trợ action 'read_data' mà không cần filters để lấy hết
+        payload = {
+            'action': 'read_data',
+            # 'filters': {} 
+        }
+        
+        response = requests.post(
+            GOOGLE_SHEET_SCRIPT_URL,
+            json=payload,
+            timeout=15
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        if result.get('success') and result.get('data'):
+            return result.get('data', [])
+        
+        return None
+    except Exception as e:
+        return None
+
 def get_candidate_details(candidate_id, api_key):
     """Lấy và xử lý dữ liệu chi tiết ứng viên từ API Base.vn, trả về JSON phẳng"""
     url = "https://hiring.base.vn/publicapi/v2/candidate/get"
@@ -1334,6 +1362,201 @@ def get_offer_letter_tool(
         # Thêm thông tin similarity nếu tìm bằng tên
         if candidate_similarity_score is not None:
             result["candidate_similarity_score"] = candidate_similarity_score
+                error_msg = f"Không tìm thấy ứng viên phù hợp với tên '{candidate_name}' trong vị trí '{opening_name_matched}'. "
+                if candidate_similarity is not None:
+                    error_msg += f"Candidate similarity score cao nhất: {candidate_similarity:.2f}"
+                raise Exception(error_msg)
+        
+        # Lấy dữ liệu chi tiết ứng viên
+        candidate_data = get_candidate_details(found_candidate_id, BASE_API_KEY)
+        
+        # Trích xuất cv_text từ cv_url nếu có
+        cv_url = candidate_data.get('cv_url')
+        cv_text = None
+        if cv_url:
+            cv_text = extract_text_from_cv_url_with_genai(cv_url)
+            candidate_data['cv_text'] = cv_text
+        
+        # Lấy dữ liệu bài test từ Google Sheet
+        test_results = get_test_results_from_google_sheet(found_candidate_id)
+        candidate_data['test_results'] = test_results
+        
+        # Lấy JD dựa trên opening name
+        opening_name = candidate_data.get('vi_tri_ung_tuyen')
+        opening_id = candidate_data.get('opening_id')
+        job_description = None
+        
+        if opening_name or opening_id:
+            # Tìm opening_id nếu chỉ có opening_name
+            if not opening_id and opening_name:
+                opening_id, matched_name, similarity_score = find_opening_id_by_name(
+                    opening_name,
+                    BASE_API_KEY
+                )
+            
+            # Lấy JD nếu có opening_id
+            if opening_id:
+                jds = get_job_descriptions(BASE_API_KEY, use_cache=True)
+                jd = next((jd for jd in jds if jd['id'] == opening_id), None)
+                
+                if not jd:
+                    # Thử làm mới cache nếu không tìm thấy
+                    jds = get_job_descriptions(BASE_API_KEY, use_cache=False)
+                    jd = next((jd for jd in jds if jd['id'] == opening_id), None)
+                
+                if jd:
+                    job_description = jd['job_description']
+                    candidate_data['job_description'] = job_description
+        
+        result = {
+            "success": True,
+            "candidate_id": found_candidate_id,
+            "candidate_details": candidate_data
+        }
+        
+        # Thêm thông tin similarity nếu tìm bằng tên
+        if opening_similarity is not None:
+            result["opening_similarity_score"] = opening_similarity
+            result["opening_id"] = opening_id
+            result["opening_name"] = opening_name_matched
+        if candidate_similarity is not None:
+            result["candidate_similarity_score"] = candidate_similarity
+        
+        return result
+    except Exception as e:
+        raise Exception(f"Lỗi khi lấy chi tiết ứng viên: {str(e)}")
+
+@mcp.tool(
+    name="get_offer_letter",
+    description="Lấy offer letter của ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name.",
+    tags={"hiring", "candidate", "offer"},
+    annotations={"readOnlyHint": True}
+)
+def get_offer_letter_tool(
+    candidate_id: Optional[str] = None,
+    opening_name_or_id: Optional[str] = None,
+    candidate_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Lấy offer letter của ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name (dùng cosine similarity). 
+    Trả về tên ứng viên, vị trí ứng tuyển và nội dung offer letter.
+    
+    Args:
+        candidate_id: ID của ứng viên. Bắt buộc nếu không có opening_name_or_id và candidate_name.
+        opening_name_or_id: Tên hoặc ID của vị trí tuyển dụng để tìm kiếm bằng cosine similarity. Bắt buộc nếu không có candidate_id.
+        candidate_name: Tên ứng viên để tìm kiếm bằng cosine similarity trong opening. Bắt buộc nếu không có candidate_id.
+    """
+    try:
+        found_candidate_id = candidate_id
+        opening_id = None
+        opening_name_matched = None
+        opening_similarity = None
+        candidate_similarity = None
+        
+        # Nếu không có candidate_id, phải có cả opening_name_or_id và candidate_name
+        if not found_candidate_id:
+            if not opening_name_or_id or not candidate_name:
+                raise Exception("Phải cung cấp candidate_id, hoặc cả opening_name_or_id và candidate_name")
+            
+            # Tìm opening_id từ opening_name_or_id bằng cosine similarity
+            opening_id, opening_name_matched, opening_similarity = find_opening_id_by_name(
+                opening_name_or_id,
+                BASE_API_KEY
+            )
+            
+            if not opening_id:
+                raise Exception(f"Không tìm thấy vị trí phù hợp với '{opening_name_or_id}'. Similarity score cao nhất: {opening_similarity:.2f}")
+            
+            # Tìm candidate trong opening đó bằng tên với cosine similarity (chỉ tìm trong stage "Offered" và "Hired")
+            found_candidate_id, candidate_similarity = find_candidate_by_name_in_opening(
+                candidate_name,
+                opening_id,
+                BASE_API_KEY,
+                similarity_threshold=0.5,
+                filter_stages=['Offered', 'Hired']  # Chỉ lọc stage cho offer letter
+            )
+            
+            if not found_candidate_id:
+                error_msg = f"Không tìm thấy ứng viên phù hợp với tên '{candidate_name}' trong vị trí '{opening_name_matched}'. "
+                if candidate_similarity is not None:
+                    error_msg += f"Candidate similarity score cao nhất: {candidate_similarity:.2f}"
+                raise Exception(error_msg)
+        
+        # Lấy thông tin cơ bản của ứng viên để lấy tên và vị trí ứng tuyển
+        candidate_data = get_candidate_details(found_candidate_id, BASE_API_KEY)
+        candidate_similarity_score = None
+        opening_name_matched = None
+        
+        # Nếu không có candidate_id, phải có cả opening_name và candidate_name để tìm trong Google Sheet
+        if not found_candidate_id:
+            if not opening_name or not candidate_name:
+                raise Exception("Phải cung cấp candidate_id, hoặc cả opening_name và candidate_name để tìm trong Google Sheet")
+            
+            # Tìm candidate_id trong Google Sheet bằng cosine similarity với tên ứng viên và vị trí ứng tuyển
+            found_candidate_id, candidate_similarity_score, _ = find_candidate_id_in_google_sheet(
+                candidate_name,
+                opening_name,
+                similarity_threshold=0.5
+            )
+            
+            if not found_candidate_id:
+                error_msg = f"Không tìm thấy ứng viên phù hợp với tên '{candidate_name}' và vị trí '{opening_name}' trong Google Sheet. "
+                if candidate_similarity_score is not None:
+                    error_msg += f"Similarity score cao nhất: {candidate_similarity_score:.2f}"
+                raise Exception(error_msg)
+            
+            opening_name_matched = opening_name
+        
+        # Đảm bảo found_candidate_id là string
+        found_candidate_id = str(found_candidate_id) if found_candidate_id else None
+        if not found_candidate_id:
+            raise Exception("Không thể xác định candidate_id")
+        
+        # Lấy tất cả bài test của ứng viên từ Google Sheet
+        all_test_results = get_test_results_from_google_sheet(found_candidate_id)
+        
+        if all_test_results is None:
+            raise Exception(f"Lỗi khi kết nối đến Google Sheet hoặc không tìm thấy bài test nào cho ứng viên với ID '{found_candidate_id}'")
+        
+        if not isinstance(all_test_results, list) or len(all_test_results) == 0:
+            raise Exception(f"Không tìm thấy bài test nào cho ứng viên với ID '{found_candidate_id}' trong Google Sheet")
+        
+        # Tìm bài test cụ thể theo test_name bằng cosine similarity
+        specific_test, test_similarity = find_test_by_name(all_test_results, test_name, similarity_threshold=0.5)
+        
+        if not specific_test:
+            error_msg = f"Không tìm thấy bài test phù hợp với tên '{test_name}' cho ứng viên với ID '{found_candidate_id}'. "
+            if test_similarity is not None:
+                error_msg += f"Test similarity score cao nhất: {test_similarity:.2f}"
+            raise Exception(error_msg)
+        
+        # Lấy thông tin ứng viên từ Google Sheet để trả về (từ bài test đã tìm thấy hoặc từ all_data)
+        candidate_name_result = None
+        opening_name_result = opening_name_matched
+        
+        # Thử lấy từ bài test đã tìm thấy trước (nếu có trong data)
+        # Nếu không có, thử lấy từ all_data
+        all_data = get_all_test_results_from_google_sheet()
+        if all_data and isinstance(all_data, list):
+            for item in all_data:
+                if str(item.get('candidate_id', '')) == str(found_candidate_id):
+                    candidate_name_result = item.get('Tên ứng viên', '') or candidate_name_result
+                    opening_name_result = item.get('Công việc ứng tuyển', '') or opening_name_result or opening_name_matched
+                    break
+        
+        result = {
+            "success": True,
+            "candidate_id": found_candidate_id,
+            "candidate_name": candidate_name_result,
+            "opening_name": opening_name_result,
+            "test_name": specific_test.get('test_name'),
+            "test_result": specific_test,
+            "test_similarity_score": test_similarity
+        }
+        
+        # Thêm thông tin similarity nếu tìm bằng tên
+        if candidate_similarity_score is not None:
+            result["candidate_similarity_score"] = candidate_similarity_score
         
         return result
     except Exception as e:
@@ -1368,6 +1591,64 @@ def get_openings_list() -> str:
         return result
     except Exception as e:
         return f"Lỗi khi lấy danh sách openings: {str(e)}"
+
+@mcp.tool(
+    name="get_candidate_feedback_analytics",
+    description="Lấy dữ liệu feedback của các ứng viên, gom nhóm theo câu hỏi.",
+    tags={"hiring", "feedback", "analytics"},
+    annotations={"readOnlyHint": True}
+)
+def get_candidate_feedback_analytics() -> Dict[str, Dict[str, str]]:
+    """
+    Lấy dữ liệu feedback từ Google Sheet, phân tích và gom nhóm theo câu hỏi.
+    Trả về dictionary dạng: { 'Tên câu hỏi': { 'Tên ứng viên': 'Câu trả lời', ... }, ... }
+    """
+    try:
+        # 1. Lấy tất cả dữ liệu
+        all_data = get_all_test_results_raw()
+        if not all_data:
+            return {"error": "Không thể lấy dữ liệu từ Google Sheet hoặc không có dữ liệu."}
+        
+        # 2. Lọc các bài test feedback
+        feedback_items = [
+            item for item in all_data 
+            if 'feedback' in item.get('Tên bài test', '').lower()
+        ]
+        
+        if not feedback_items:
+            return {"message": "Không tìm thấy bài test feedback nào."}
+        
+        # 3. Phân tích và gom nhóm
+        analytics_result = {}
+        
+        for item in feedback_items:
+            candidate_name = item.get('Tên ứng viên', 'Unknown')
+            content = item.get('test content', '')
+            
+            if not content:
+                continue
+                
+            # Regex pattern để tìm câu hỏi và câu trả lời
+            pattern = r"Câu hỏi (\d+)\.(.*?)\nCâu trả lời của thí sinh\s*(.*?)\s*Đây là câu hỏi mở"
+            matches = re.findall(pattern, content, re.DOTALL)
+            
+            for match in matches:
+                # q_num = match[0] # Không dùng số thứ tự câu hỏi
+                q_text = match[1].strip()
+                answer = match[2].strip()
+                
+                # Clean up question text (bỏ xuống dòng, khoảng trắng thừa)
+                q_text = re.sub(r'\s+', ' ', q_text)
+                
+                if q_text not in analytics_result:
+                    analytics_result[q_text] = {}
+                
+                analytics_result[q_text][candidate_name] = answer
+                
+        return analytics_result
+        
+    except Exception as e:
+        return {"error": f"Lỗi khi phân tích feedback: {str(e)}"}
 
 if __name__ == "__main__":
     mcp.run()
