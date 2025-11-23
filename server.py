@@ -695,15 +695,15 @@ def get_candidates_for_opening(opening_id, api_key, start_date=None, end_date=No
     return []
 
 def get_interviews(api_key, start_date=None, end_date=None, opening_id=None, filter_date=None):
-    """Truy xuất lịch phỏng vấn từ Base API, chỉ trả về các trường quan trọng. Lọc dựa trên date của time_dt nếu có filter_date."""
+    """Truy xuất lịch phỏng vấn từ Base API, chỉ trả về các trường quan trọng. Lọc dựa trên date của time_dt."""
     url = "https://hiring.base.vn/publicapi/v2/interview/list"
     
     payload = {
         'access_token': api_key,
     }
     
-    # Không truyền start_date/end_date vào API Base, sẽ lọc sau khi chuyển đổi time_dt
-    # Chỉ dùng để API Base lọc sơ bộ nếu cần
+    # Không truyền start_date/end_date vào payload API Base
+    # Thay vào đó sẽ lọc dựa trên time_dt sau khi nhận dữ liệu
     
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     
@@ -728,6 +728,14 @@ def get_interviews(api_key, start_date=None, end_date=None, opening_id=None, fil
         processed_interviews = []
         hcm_tz = timezone('Asia/Ho_Chi_Minh')
         
+        # Chuyển đổi start_date và end_date thành date objects nếu có
+        start_date_obj = None
+        end_date_obj = None
+        if start_date:
+            start_date_obj = start_date if isinstance(start_date, date) else datetime.strptime(start_date, "%Y-%m-%d").date()
+        if end_date:
+            end_date_obj = end_date if isinstance(end_date, date) else datetime.strptime(end_date, "%Y-%m-%d").date()
+        
         for interview in interviews:
             # Chỉ lấy các trường quan trọng
             processed_interview = {
@@ -750,10 +758,18 @@ def get_interviews(api_key, start_date=None, end_date=None, opening_id=None, fil
                 except (ValueError, TypeError, OSError):
                     pass
             
-            # Lọc dựa trên date của time_dt
+            # Lọc dựa trên date của time_dt với filter_date (ưu tiên cao nhất)
             if filter_date:
                 if time_dt_date is None or time_dt_date != filter_date:
                     continue  # Bỏ qua nếu không có time_dt hoặc date không khớp
+            # Lọc dựa trên start_date và end_date của time_dt
+            elif start_date_obj or end_date_obj:
+                if time_dt_date is None:
+                    continue  # Bỏ qua nếu không có time_dt
+                if start_date_obj and time_dt_date < start_date_obj:
+                    continue  # Bỏ qua nếu trước start_date
+                if end_date_obj and time_dt_date > end_date_obj:
+                    continue  # Bỏ qua nếu sau end_date
             
             processed_interviews.append(processed_interview)
         
@@ -1177,12 +1193,21 @@ def get_interviews_by_opening(
                 opening_id = None
         
         # Lấy tất cả interviews và lọc dựa trên date của time_dt
-        interviews = get_interviews(BASE_API_KEY, opening_id=opening_id, filter_date=filter_date_obj)
+        # Nếu có date, dùng filter_date; nếu không thì dùng start_date và end_date
+        interviews = get_interviews(
+            BASE_API_KEY, 
+            start_date=start_date if not date else None,
+            end_date=end_date if not date else None,
+            opening_id=opening_id, 
+            filter_date=filter_date_obj
+        )
         
         return {
             "success": True,
             "query": opening_name_or_id,
             "date": date,
+            "start_date": start_date if not date else None,
+            "end_date": end_date if not date else None,
             "opening_id": opening_id,
             "opening_name": matched_name,
             "similarity_score": similarity_score,
