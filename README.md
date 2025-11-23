@@ -123,26 +123,37 @@ Get all candidates for a specific opening with optional filters.
 
 ### 3. `get_interviews_by_opening`
 
-Retrieve interview schedules with optional filters.
+Retrieve interview schedules with optional filters. Filtering is done client-side based on the `time_dt` field (interview time in Asia/Ho_Chi_Minh timezone).
 
 **Parameters:**
 - `opening_name_or_id` (optional): Opening name or ID
-- `date` (optional): Specific date (YYYY-MM-DD)
-- `start_date` (optional): Filter start date (YYYY-MM-DD)
-- `end_date` (optional): Filter end date (YYYY-MM-DD)
+- `date` (optional): Specific date (YYYY-MM-DD). If provided, only interviews on this exact date will be returned.
+- `start_date` (optional): Filter start date (YYYY-MM-DD). Returns interviews from this date onwards.
+- `end_date` (optional): Filter end date (YYYY-MM-DD). Returns interviews up to and including this date.
+
+**Note:** If `date` is provided, it takes priority and `start_date`/`end_date` are ignored.
 
 **Returns:**
 - List of interviews with:
   - Interview ID
   - Candidate information
   - Opening name
-  - Interview time (Asia/Ho_Chi_Minh timezone)
+  - Interview time (`time_dt` in ISO format, Asia/Ho_Chi_Minh timezone)
 
 **Example:**
 ```python
 {
   "opening_name_or_id": "Backend Developer",
   "date": "2025-11-22"
+}
+```
+
+**Example with date range:**
+```python
+{
+  "opening_name_or_id": "Backend Developer",
+  "start_date": "2025-11-20",
+  "end_date": "2025-11-25"
 }
 ```
 
