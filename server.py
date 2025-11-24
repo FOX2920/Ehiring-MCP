@@ -1386,9 +1386,12 @@ def get_candidate_details_tool(
                     'candidates': []
                 }
             
-            # Xóa job_description khỏi candidate_data để tránh trùng lặp
-            candidate_data_without_jd = {k: v for k, v in candidate_data.items() if k != 'job_description'}
-            openings_map[opening_key]['candidates'].append(candidate_data_without_jd)
+            # Xóa các trường thừa khỏi candidate_data để đúng format README
+            candidate_data_cleaned = {
+                k: v for k, v in candidate_data.items() 
+                if k not in ['job_description', 'opening_id', 'vi_tri_ung_tuyen']
+            }
+            openings_map[opening_key]['candidates'].append(candidate_data_cleaned)
         
         # Lấy JD cho mỗi opening
         jds = get_job_descriptions(BASE_API_KEY, use_cache=True)
