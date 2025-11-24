@@ -161,25 +161,89 @@ Retrieve interview schedules with optional filters. Filtering is done client-sid
 
 ### 4. `get_candidate_details`
 
-Get detailed information about a specific candidate.
+Get detailed information about one or more candidates. Supports batch queries with results grouped by opening/job position.
 
 **Parameters:**
-- `candidate_id` (optional): Direct candidate ID
+- `candidate_id` (optional): Direct candidate ID or multiple IDs separated by commas (e.g., "123,456,789")
 - `opening_name_or_id` (optional): Opening name or ID (required if using candidate_name)
-- `candidate_name` (optional): Candidate name for fuzzy search
+- `candidate_name` (optional): Candidate name or multiple names separated by commas (e.g., "Nguyen Van A,Tran Thi B")
 
 **Returns:**
-- Complete candidate profile
-- Job description for their opening
-- Reviews with reviewer names and titles
-- All form fields (flattened)
-- Test results
+- Results grouped by opening/job position
+- Each opening contains:
+  - `opening_id`: Opening ID
+  - `opening_name`: Opening name
+  - `job_description`: Job description for this opening
+  - `candidates`: Array of candidate details (without duplicated JD)
+    - Complete candidate profile
+    - Reviews with reviewer names and titles
+    - All form fields (flattened)
+    - Test results
+    - CV text (extracted)
 
-**Example:**
+**Example (single candidate):**
 ```python
 {
   "opening_name_or_id": "Backend Developer",
   "candidate_name": "Nguyen Van A"
+}
+```
+
+**Example (multiple candidates by ID):**
+```python
+{
+  "candidate_id": "123,456,789"
+}
+```
+
+**Example (multiple candidates by name in one opening):**
+```python
+{
+  "opening_name_or_id": "Backend Developer",
+  "candidate_name": "Nguyen Van A,Tran Thi B,Le Van C"
+}
+```
+
+**Response format:**
+```json
+{
+  "success": true,
+  "total_candidates": 3,
+  "total_openings": 2,
+  "openings": [
+    {
+      "opening_id": "9162",
+      "opening_name": "Backend Developer",
+      "job_description": "...",
+      "candidates": [
+        {
+          "id": "123",
+          "ten": "Nguyen Van A",
+          "email": "...",
+          "cv_text": "...",
+          "reviews": [...],
+          "test_results": [...]
+        },
+        {
+          "id": "456",
+          "ten": "Tran Thi B",
+          "..."
+        }
+      ]
+    },
+    {
+      "opening_id": "9163",
+      "opening_name": "Frontend Developer",
+      "job_description": "...",
+      "candidates": [
+        {
+          "id": "789",
+          "ten": "Le Van C",
+          "..."
+        }
+      ]
+    }
+  ]
 }
 ```
 

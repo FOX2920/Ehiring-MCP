@@ -1221,7 +1221,7 @@ def get_interviews_by_opening(
 
 @mcp.tool(
     name="get_candidate_details",
-    description="Lấy chi tiết ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name.",
+    description="Lấy chi tiết ứng viên. Hỗ trợ nhiều candidate_id (phân cách bằng dấu phẩy) hoặc opening_name_or_id + nhiều candidate_name (phân cách bằng dấu phẩy).",
     tags={"hiring", "candidate", "detail"},
     annotations={"readOnlyHint": True}
 )
@@ -1231,27 +1231,38 @@ def get_candidate_details_tool(
     candidate_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Lấy chi tiết ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name (dùng cosine similarity). 
-    Tự động trích xuất cv_text từ cv_url bằng Gemini AI và thêm JD dựa trên opening name.
+    Lấy chi tiết ứng viên. Hỗ trợ batch query với nhiều candidate_id hoặc nhiều candidate_name.
+    Kết quả được nhóm theo opening (vị trí ứng tuyển).
     
     Args:
-        candidate_id: ID của ứng viên. Bắt buộc nếu không có opening_name_or_id và candidate_name.
-        opening_name_or_id: Tên hoặc ID của vị trí tuyển dụng để tìm kiếm bằng cosine similarity. Bắt buộc nếu không có candidate_id.
-        candidate_name: Tên ứng viên để tìm kiếm bằng cosine similarity trong opening. Bắt buộc nếu không có candidate_id.
+        candidate_id: ID của ứng viên hoặc nhiều ID phân cách bằng dấu phẩy (vd: "123,456,789")
+        opening_name_or_id: Tên hoặc ID của vị trí tuyển dụng (bắt buộc nếu dùng candidate_name)
+        candidate_name: Tên ứng viên hoặc nhiều tên phân cách bằng dấu phẩy (vd: "Nguyen Van A,Tran Thi B")
     """
     try:
-        found_candidate_id = candidate_id
+        # Parse candidate IDs nếu có (phân cách bằng dấu phẩy)
+        candidate_ids = []
+        if candidate_id:
+            candidate_ids = [cid.strip() for cid in candidate_id.split(',') if cid.strip()]
+        
+        # Parse candidate names nếu có (phân cách bằng dấu phẩy)
+        candidate_names = []
+        if candidate_name:
+            candidate_names = [name.strip() for name in candidate_name.split(',') if name.strip()]
+        
+        # Validate input
+        if not candidate_ids and not candidate_names:
+            raise Exception("Phải cung cấp ít nhất một candidate_id hoặc candidate_name")
+        
+        if candidate_names and not opening_name_or_id:
+            raise Exception("Phải cung cấp opening_name_or_id khi tìm bằng candidate_name")
+        
+        # Tìm opening_id nếu có opening_name_or_id
         opening_id = None
         opening_name_matched = None
         opening_similarity = None
-        candidate_similarity = None
         
-        # Nếu không có candidate_id, phải có cả opening_name_or_id và candidate_name
-        if not found_candidate_id:
-            if not opening_name_or_id or not candidate_name:
-                raise Exception("Phải cung cấp candidate_id, hoặc cả opening_name_or_id và candidate_name")
-            
-            # Tìm opening_id từ opening_name_or_id bằng cosine similarity
+        if opening_name_or_id:
             opening_id, opening_name_matched, opening_similarity = find_opening_id_by_name(
                 opening_name_or_id,
                 BASE_API_KEY
@@ -1259,76 +1270,97 @@ def get_candidate_details_tool(
             
             if not opening_id:
                 raise Exception(f"Không tìm thấy vị trí phù hợp với '{opening_name_or_id}'. Similarity score cao nhất: {opening_similarity:.2f}")
+        
+        # Tìm candidate IDs từ candidate names nếu có
+        if candidate_names and opening_id:
+            for name in candidate_names:
+                found_id, similarity = find_candidate_by_name_in_opening(
+                    name,
+                    opening_id,
+                    BASE_API_KEY,
+                    similarity_threshold=0.5,
+                    filter_stages=None
+                )
+                
+                if found_id:
+                    candidate_ids.append(found_id)
+        
+        if not candidate_ids:
+            raise Exception("Không tìm thấy ứng viên nào phù hợp")
+        
+        # Lấy thông tin chi tiết cho tất cả candidates
+        all_candidates_data = []
+        for cid in candidate_ids:
+            try:
+                candidate_data = get_candidate_details(cid, BASE_API_KEY)
+                
+                # Trích xuất cv_text từ cv_url nếu có
+                cv_url = candidate_data.get('cv_url')
+                if cv_url:
+                    cv_text = extract_text_from_cv_url_with_genai(cv_url)
+                    candidate_data['cv_text'] = cv_text
+                
+                # Lấy dữ liệu bài test từ Google Sheet
+                test_results = get_test_results_from_google_sheet(cid)
+                candidate_data['test_results'] = test_results
+                
+                all_candidates_data.append(candidate_data)
+            except Exception as e:
+                # Nếu lỗi với một candidate, bỏ qua và tiếp tục
+                continue
+        
+        if not all_candidates_data:
+            raise Exception("Không thể lấy thông tin chi tiết cho bất kỳ ứng viên nào")
+        
+        # Nhóm candidates theo opening_id
+        openings_map = {}
+        for candidate_data in all_candidates_data:
+            cand_opening_id = candidate_data.get('opening_id')
+            cand_opening_name = candidate_data.get('vi_tri_ung_tuyen')
             
-            # Tìm candidate trong opening đó bằng tên với cosine similarity (không filter stage)
-            found_candidate_id, candidate_similarity = find_candidate_by_name_in_opening(
-                candidate_name,
-                opening_id,
-                BASE_API_KEY,
-                similarity_threshold=0.5,
-                filter_stages=None  # Không lọc stage cho endpoint candidate
-            )
-            
-            if not found_candidate_id:
-                error_msg = f"Không tìm thấy ứng viên phù hợp với tên '{candidate_name}' trong vị trí '{opening_name_matched}'. "
-                if candidate_similarity is not None:
-                    error_msg += f"Candidate similarity score cao nhất: {candidate_similarity:.2f}"
-                raise Exception(error_msg)
-        
-        # Lấy dữ liệu chi tiết ứng viên
-        candidate_data = get_candidate_details(found_candidate_id, BASE_API_KEY)
-        
-        # Trích xuất cv_text từ cv_url nếu có
-        cv_url = candidate_data.get('cv_url')
-        cv_text = None
-        if cv_url:
-            cv_text = extract_text_from_cv_url_with_genai(cv_url)
-            candidate_data['cv_text'] = cv_text
-        
-        # Lấy dữ liệu bài test từ Google Sheet
-        test_results = get_test_results_from_google_sheet(found_candidate_id)
-        candidate_data['test_results'] = test_results
-        
-        # Lấy JD dựa trên opening name
-        opening_name = candidate_data.get('vi_tri_ung_tuyen')
-        opening_id = candidate_data.get('opening_id')
-        job_description = None
-        
-        if opening_name or opening_id:
             # Tìm opening_id nếu chỉ có opening_name
-            if not opening_id and opening_name:
-                opening_id, matched_name, similarity_score = find_opening_id_by_name(
-                    opening_name,
+            if not cand_opening_id and cand_opening_name:
+                cand_opening_id, _, _ = find_opening_id_by_name(
+                    cand_opening_name,
                     BASE_API_KEY
                 )
             
-            # Lấy JD nếu có opening_id
-            if opening_id:
-                jds = get_job_descriptions(BASE_API_KEY, use_cache=True)
-                jd = next((jd for jd in jds if jd['id'] == opening_id), None)
-                
-                if not jd:
-                    # Thử làm mới cache nếu không tìm thấy
-                    jds = get_job_descriptions(BASE_API_KEY, use_cache=False)
-                    jd = next((jd for jd in jds if jd['id'] == opening_id), None)
-                
+            # Sử dụng opening_id hoặc opening_name làm key
+            opening_key = cand_opening_id or cand_opening_name or "unknown"
+            
+            if opening_key not in openings_map:
+                openings_map[opening_key] = {
+                    'opening_id': cand_opening_id,
+                    'opening_name': cand_opening_name,
+                    'job_description': None,
+                    'candidates': []
+                }
+            
+            # Xóa job_description khỏi candidate_data để tránh trùng lặp
+            candidate_data_without_jd = {k: v for k, v in candidate_data.items() if k != 'job_description'}
+            openings_map[opening_key]['candidates'].append(candidate_data_without_jd)
+        
+        # Lấy JD cho mỗi opening
+        jds = get_job_descriptions(BASE_API_KEY, use_cache=True)
+        for opening_key, opening_data in openings_map.items():
+            if opening_data['opening_id']:
+                jd = next((jd for jd in jds if jd['id'] == opening_data['opening_id']), None)
                 if jd:
-                    job_description = jd['job_description']
-                    candidate_data['job_description'] = job_description
+                    opening_data['job_description'] = jd['job_description']
+        
+        # Chuyển đổi sang list để dễ đọc hơn
+        openings_list = list(openings_map.values())
         
         result = {
             "success": True,
-            "candidate_id": found_candidate_id,
-            "candidate_details": candidate_data
+            "total_candidates": len(all_candidates_data),
+            "total_openings": len(openings_list),
+            "openings": openings_list
         }
         
-        # Thêm thông tin similarity nếu tìm bằng tên
+        # Thêm thông tin similarity nếu tìm bằng opening name
         if opening_similarity is not None:
             result["opening_similarity_score"] = opening_similarity
-            result["opening_id"] = opening_id
-            result["opening_name"] = opening_name_matched
-        if candidate_similarity is not None:
-            result["candidate_similarity_score"] = candidate_similarity
         
         return result
     except Exception as e:
