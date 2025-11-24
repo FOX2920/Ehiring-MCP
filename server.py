@@ -920,6 +920,36 @@ def get_opening_stages(opening_id, api_key):
         # Nếu có lỗi, trả về list rỗng
         return []
 
+def get_opening_content(opening_id, api_key):
+    """Lấy nội dung chi tiết (JD) của một opening từ Base API"""
+    if not opening_id or not api_key:
+        return None
+    
+    try:
+        url = "https://hiring.base.vn/publicapi/v2/opening/get"
+        payload = {
+            'access_token': api_key,
+            'id': opening_id
+        }
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        
+        response = requests.post(url, headers=headers, data=payload, timeout=15)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # Trích xuất content (JD)
+        content = result.get('opening', {}).get('content')
+        
+        # Làm sạch HTML tags nếu cần, hoặc giữ nguyên tùy yêu cầu
+        # Ở đây ta trả về raw content hoặc text đã làm sạch
+        if content:
+            return remove_html_tags(content)
+            
+        return None
+    except Exception:
+        return None
+
 def get_candidate_details(candidate_id, api_key):
     """Lấy và xử lý dữ liệu chi tiết ứng viên từ API Base.vn, trả về JSON phẳng"""
     url = "https://hiring.base.vn/publicapi/v2/candidate/get"
@@ -957,12 +987,16 @@ def get_candidate_details(candidate_id, api_key):
     
     # Bắt đầu với các trường dữ liệu chính
     # Lấy opening info từ nhiều nguồn để đảm bảo có dữ liệu
-    evaluations = candidate_data.get('evaluations') or []
-    opening_export = evaluations[0].get('opening_export', {}) if evaluations else {}
+    # Ưu tiên lấy từ candidate_data['opening_export'] (root level) theo hướng dẫn mới
+    opening_export = candidate_data.get('opening_export', {})
+    if not opening_export:
+        # Fallback: thử tìm trong evaluations (cách cũ)
+        evaluations = candidate_data.get('evaluations') or []
+        opening_export = evaluations[0].get('opening_export', {}) if evaluations else {}
     
     # Thử lấy opening_name từ nhiều nguồn
     opening_name = (
-        opening_export.get('name') or  # Từ evaluations.opening_export.name
+        opening_export.get('name') or  # Từ opening_export.name
         candidate_data.get('title') or  # Từ title field
         None
     )
@@ -991,7 +1025,7 @@ def get_candidate_details(candidate_id, api_key):
     
     # Thử lấy opening_id từ nhiều nguồn
     opening_id = (
-        opening_export.get('id') or  # Từ evaluations.opening_export.id
+        opening_export.get('id') or  # Từ opening_export.id
         ""  # Default to empty string instead of None
     )
     
@@ -1394,12 +1428,18 @@ def get_candidate_details_tool(
             openings_map[opening_key]['candidates'].append(candidate_data_cleaned)
         
         # Lấy JD cho mỗi opening
-        jds = get_job_descriptions(BASE_API_KEY, use_cache=True)
         for opening_key, opening_data in openings_map.items():
             if opening_data['opening_id']:
-                jd = next((jd for jd in jds if jd['id'] == opening_data['opening_id']), None)
-                if jd:
-                    opening_data['job_description'] = jd['job_description']
+                # Dùng hàm get_opening_content mới để lấy JD chính xác theo ID
+                jd_content = get_opening_content(opening_data['opening_id'], BASE_API_KEY)
+                if jd_content:
+                    opening_data['job_description'] = jd_content
+                else:
+                    # Nếu không tìm thấy JD, thử tìm trong cache cũ (fallback)
+                    jds = get_job_descriptions(BASE_API_KEY, use_cache=True)
+                    jd = next((jd for jd in jds if jd['id'] == opening_data['opening_id']), None)
+                    if jd:
+                        opening_data['job_description'] = jd['job_description']
         
         # Chuyển đổi sang list để dễ đọc hơn
         openings_list = list(openings_map.values())
