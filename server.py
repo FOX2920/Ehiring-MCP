@@ -1208,8 +1208,6 @@ def get_interviews_by_opening(
             "date": date,
             "start_date": start_date if not date else None,
             "end_date": end_date if not date else None,
-            "opening_id": opening_id,
-            "opening_name": matched_name,
             "similarity_score": similarity_score,
             "total_interviews": len(interviews),
             "interviews": interviews
