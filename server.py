@@ -964,8 +964,30 @@ def get_candidate_details(candidate_id, api_key):
     opening_name = (
         opening_export.get('name') or  # Từ evaluations.opening_export.name
         candidate_data.get('title') or  # Từ title field
-        ""  # Default to empty string instead of None
+        None
     )
+    
+    # Nếu không có opening_name, thử tìm trong lịch phỏng vấn gần đây (fallback)
+    if not opening_name:
+        try:
+            # Lấy danh sách interview (mặc định là gần đây)
+            # Hàm get_interviews được định nghĩa sau, nhưng sẽ có sẵn khi hàm này được gọi
+            interviews = get_interviews(api_key)
+            
+            # Tìm interview của candidate này
+            candidate_id_str = str(candidate_data.get('id'))
+            for interview in interviews:
+                if str(interview.get('candidate_id')) == candidate_id_str:
+                    interview_opening_name = interview.get('opening_name')
+                    if interview_opening_name:
+                        opening_name = interview_opening_name
+                        break
+        except Exception:
+            pass
+            
+    # Đảm bảo opening_name không None
+    if not opening_name:
+        opening_name = ""
     
     # Thử lấy opening_id từ nhiều nguồn
     opening_id = (
