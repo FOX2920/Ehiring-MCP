@@ -818,8 +818,14 @@ def get_test_results_from_google_sheet(candidate_id):
         # Nếu có lỗi, trả về None (không làm gián đoạn flow chính)
         return None
 
-def get_feedback_data_from_google_sheet():
-    """Lấy dữ liệu feedback từ Google Sheet và trả về dạng JSON theo format: {'câu hỏi 1': {'tên ứng viên': 'câu trả lời', ...}, ...}"""
+def get_feedback_data_from_google_sheet(start_date=None, job_description=None):
+    """
+    Lấy dữ liệu feedback từ Google Sheet và trả về dạng JSON theo format: {'câu hỏi 1': {'tên ứng viên': 'câu trả lời', ...}, ...}
+    
+    Args:
+        start_date (str, optional): Ngày bắt đầu lọc (YYYY-MM-DD). Lọc dựa trên cột 'Time'.
+        job_description (str, optional): Mô tả công việc hoặc tên vị trí để lọc theo độ tương đồng với cột 'Công việc ứng tuyển'.
+    """
     if not GOOGLE_SHEET_SCRIPT_URL:
         return None
     
@@ -848,6 +854,74 @@ def get_feedback_data_from_google_sheet():
             item for item in all_data 
             if 'Tên bài test' in item and 'feedback' in item.get('Tên bài test', '').lower()
         ]
+        
+        if not feedback_data:
+            return None
+            
+        # --- Xử lý lọc theo start_date ---
+        if start_date:
+            try:
+                filter_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+                filtered_by_date = []
+                
+                for item in feedback_data:
+                    time_str = item.get('Time', '')
+                    if not time_str:
+                        continue
+                        
+                    item_date = None
+                    # Thử parse các định dạng ngày tháng phổ biến
+                    date_formats = [
+                        "%d/%m/%Y %H:%M:%S", "%d/%m/%Y", 
+                        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
+                        "%m/%d/%Y %H:%M:%S", "%m/%d/%Y"
+                    ]
+                    
+                    for fmt in date_formats:
+                        try:
+                            item_date = datetime.strptime(time_str, fmt).date()
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if item_date and item_date >= filter_date:
+                        filtered_by_date.append(item)
+                
+                feedback_data = filtered_by_date
+            except ValueError:
+                # Nếu start_date không đúng định dạng, bỏ qua lọc ngày (hoặc có thể raise error)
+                pass
+        
+        # --- Xử lý lọc theo job_description (cosine similarity) ---
+        if job_description and feedback_data:
+            job_titles = [item.get('Công việc ứng tuyển', '') for item in feedback_data]
+            
+            # Nếu có ít nhất 1 job title để so sánh
+            if any(job_titles):
+                try:
+                    vectorizer = TfidfVectorizer()
+                    # Thêm job_description vào danh sách để fit
+                    all_docs = job_titles + [job_description]
+                    tfidf_matrix = vectorizer.fit_transform(all_docs)
+                    
+                    # Vector của job_description là phần tử cuối cùng
+                    query_vector = tfidf_matrix[-1]
+                    # Vectors của các job titles trong data
+                    doc_vectors = tfidf_matrix[:-1]
+                    
+                    # Tính cosine similarity
+                    similarities = cosine_similarity(query_vector, doc_vectors).flatten()
+                    
+                    # Lọc các item có similarity >= ngưỡng (ví dụ 0.3)
+                    filtered_by_job = []
+                    for idx, score in enumerate(similarities):
+                        if score >= 0.3: # Ngưỡng tương đồng
+                            filtered_by_job.append(feedback_data[idx])
+                    
+                    feedback_data = filtered_by_job
+                except Exception:
+                    # Nếu lỗi vectorizer (vd: stop words, empty vocab), giữ nguyên data
+                    pass
         
         if not feedback_data:
             return None
@@ -1611,23 +1685,34 @@ def get_server_status() -> Dict[str, str]:
 
 @mcp.tool(
     name="get_feedback_data",
-    description="Lấy dữ liệu feedback của các ứng viên từ Google Sheet, trả về dạng JSON theo format: {'tên câu hỏi 1': {'tên ứng viên': 'câu trả lời', ...}, ...}",
+    description="Lấy dữ liệu feedback của các ứng viên từ Google Sheet. Có thể lọc theo ngày bắt đầu và vị trí ứng tuyển (similarity).",
     tags={"hiring", "feedback", "test"},
     annotations={"readOnlyHint": True}
 )
-def get_feedback_data() -> Dict[str, Any]:
+def get_feedback_data(
+    start_date: Optional[str] = None,
+    job_description: Optional[str] = None
+) -> Dict[str, Any]:
     """Lấy dữ liệu feedback của các ứng viên từ Google Sheet.
+    
+    Args:
+        start_date: Ngày bắt đầu lọc (YYYY-MM-DD). Lọc các bản ghi có thời gian >= start_date.
+        job_description: Mô tả công việc hoặc tên vị trí để lọc ứng viên phù hợp (dùng cosine similarity).
     
     Returns:
         Dictionary với format: {'tên câu hỏi 1': {'tên ứng viên': 'câu trả lời', ...}, ...}
     """
     try:
-        feedback_data = get_feedback_data_from_google_sheet()
+        feedback_data = get_feedback_data_from_google_sheet(start_date, job_description)
         
         if not feedback_data:
+            msg = "Không tìm thấy dữ liệu feedback"
+            if start_date or job_description:
+                msg += " phù hợp với tiêu chí lọc"
+            
             return {
                 "success": False,
-                "message": "Không tìm thấy dữ liệu feedback hoặc Google Sheet Script URL chưa được cấu hình.",
+                "message": msg,
                 "data": {}
             }
         
