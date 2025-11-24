@@ -964,13 +964,13 @@ def get_candidate_details(candidate_id, api_key):
     opening_name = (
         opening_export.get('name') or  # Từ evaluations.opening_export.name
         candidate_data.get('title') or  # Từ title field
-        None
+        ""  # Default to empty string instead of None
     )
     
     # Thử lấy opening_id từ nhiều nguồn
     opening_id = (
         opening_export.get('id') or  # Từ evaluations.opening_export.id
-        None
+        ""  # Default to empty string instead of None
     )
     
     # Nếu không có opening_id nhưng có opening_name, thử tìm opening_id
@@ -980,7 +980,7 @@ def get_candidate_details(candidate_id, api_key):
             if found_id:
                 opening_id = found_id
         except:
-            pass  # Nếu không tìm được, giữ nguyên None
+            pass
     
     refined_data = {
         'id': candidate_data.get('id'),
@@ -988,10 +988,10 @@ def get_candidate_details(candidate_id, api_key):
         'email': candidate_data.get('email'),
         'so_dien_thoai': candidate_data.get('phone'),
         
-        # Sử dụng opening_name đã xử lý ở trên
+        # Sử dụng opening_name đã xử lý ở trên, đảm bảo không None
         'vi_tri_ung_tuyen': opening_name,
         
-        # Sử dụng opening_id đã xử lý ở trên
+        # Sử dụng opening_id đã xử lý ở trên, đảm bảo không None
         'opening_id': opening_id,
         
         # Lấy stage_id và stage_name
