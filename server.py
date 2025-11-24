@@ -956,17 +956,43 @@ def get_candidate_details(candidate_id, api_key):
         return flat_dict
     
     # Bắt đầu với các trường dữ liệu chính
+    # Lấy opening info từ nhiều nguồn để đảm bảo có dữ liệu
+    evaluations = candidate_data.get('evaluations') or []
+    opening_export = evaluations[0].get('opening_export', {}) if evaluations else {}
+    
+    # Thử lấy opening_name từ nhiều nguồn
+    opening_name = (
+        opening_export.get('name') or  # Từ evaluations.opening_export.name
+        candidate_data.get('title') or  # Từ title field
+        None
+    )
+    
+    # Thử lấy opening_id từ nhiều nguồn
+    opening_id = (
+        opening_export.get('id') or  # Từ evaluations.opening_export.id
+        None
+    )
+    
+    # Nếu không có opening_id nhưng có opening_name, thử tìm opening_id
+    if not opening_id and opening_name:
+        try:
+            found_id, _, _ = find_opening_id_by_name(opening_name, api_key)
+            if found_id:
+                opening_id = found_id
+        except:
+            pass  # Nếu không tìm được, giữ nguyên None
+    
     refined_data = {
         'id': candidate_data.get('id'),
         'ten': candidate_data.get('name'),
         'email': candidate_data.get('email'),
         'so_dien_thoai': candidate_data.get('phone'),
         
-        # Lấy tên vị trí tuyển dụng chính xác từ 'evaluations'
-        'vi_tri_ung_tuyen': (candidate_data.get('evaluations') or [{}])[0].get('opening_export', {}).get('name', candidate_data.get('title')),
+        # Sử dụng opening_name đã xử lý ở trên
+        'vi_tri_ung_tuyen': opening_name,
         
-        # Lấy opening_id từ evaluations nếu có
-        'opening_id': (candidate_data.get('evaluations') or [{}])[0].get('opening_export', {}).get('id'),
+        # Sử dụng opening_id đã xử lý ở trên
+        'opening_id': opening_id,
         
         # Lấy stage_id và stage_name
         'stage_id': candidate_data.get('stage_id'),
