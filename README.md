@@ -164,7 +164,7 @@ Retrieve interview schedules with optional filters. Filtering is done client-sid
 Get detailed information about one or more candidates. Supports batch queries with results grouped by opening/job position.
 
 **Parameters:**
-- `candidate_id` (optional): Direct candidate ID or multiple IDs separated by commas (e.g., "123,456,789")
+- `candidate_id` (optional): Direct candidate ID or list of IDs (e.g., `["123", "456", "789"]`)
 - `opening_name_or_id` (optional): Opening name or ID (required if using candidate_name)
 - `candidate_name` (optional): Candidate name or multiple names separated by commas (e.g., "Nguyen Van A,Tran Thi B")
 
@@ -192,7 +192,7 @@ Get detailed information about one or more candidates. Supports batch queries wi
 **Example (multiple candidates by ID):**
 ```python
 {
-  "candidate_id": "123,456,789"
+  "candidate_id": ["123", "456", "789"]
 }
 ```
 

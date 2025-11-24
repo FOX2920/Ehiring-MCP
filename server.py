@@ -1221,12 +1221,12 @@ def get_interviews_by_opening(
 
 @mcp.tool(
     name="get_candidate_details",
-    description="Lấy chi tiết ứng viên. Hỗ trợ nhiều candidate_id (phân cách bằng dấu phẩy) hoặc opening_name_or_id + nhiều candidate_name (phân cách bằng dấu phẩy).",
+    description="Lấy chi tiết ứng viên. Hỗ trợ nhiều candidate_id (dạng list) hoặc opening_name_or_id + nhiều candidate_name (phân cách bằng dấu phẩy).",
     tags={"hiring", "candidate", "detail"},
     annotations={"readOnlyHint": True}
 )
 def get_candidate_details_tool(
-    candidate_id: Optional[str] = None,
+    candidate_id: Optional[List[str]] = None,
     opening_name_or_id: Optional[str] = None,
     candidate_name: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -1235,15 +1235,19 @@ def get_candidate_details_tool(
     Kết quả được nhóm theo opening (vị trí ứng tuyển).
     
     Args:
-        candidate_id: ID của ứng viên hoặc nhiều ID phân cách bằng dấu phẩy (vd: "123,456,789")
+        candidate_id: ID của ứng viên hoặc list các ID (vd: ["123", "456", "789"])
         opening_name_or_id: Tên hoặc ID của vị trí tuyển dụng (bắt buộc nếu dùng candidate_name)
         candidate_name: Tên ứng viên hoặc nhiều tên phân cách bằng dấu phẩy (vd: "Nguyen Van A,Tran Thi B")
     """
     try:
-        # Parse candidate IDs nếu có (phân cách bằng dấu phẩy)
+        # Parse candidate IDs - chấp nhận list hoặc single string
         candidate_ids = []
         if candidate_id:
-            candidate_ids = [cid.strip() for cid in candidate_id.split(',') if cid.strip()]
+            if isinstance(candidate_id, list):
+                candidate_ids = [str(cid).strip() for cid in candidate_id if cid]
+            else:
+                # Fallback: nếu là string, coi như single ID
+                candidate_ids = [str(candidate_id).strip()]
         
         # Parse candidate names nếu có (phân cách bằng dấu phẩy)
         candidate_names = []
