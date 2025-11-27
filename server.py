@@ -1826,7 +1826,7 @@ def analyze_candidate_full_profile(
     """
     
     if not candidate_id and not (opening_name_or_id and candidate_name):
-        raise ValueError("Phải cung cấp candidate_id, hoặc cả opening_name_or_id và candidate_name")
+        raise ValueError("Vui lòng cung cấp ID ứng viên, HOẶC cung cấp cả Tên ứng viên và Vị trí ứng tuyển.")
 
     # Gọi tool để lấy chi tiết ứng viên (bao gồm CV text và Test results)
     tool_input = {}
@@ -1877,7 +1877,7 @@ def show_unseen_potential(
     tìm cách 'show' ra năng lực thực sự và tiềm năng từ tất cả dữ liệu (Test, Form, CV, Reviews) để quyết định có nên khai thác tiếp hay không.
     """
     if not candidate_id and not (opening_name_or_id and candidate_name):
-        raise ValueError("Phải cung cấp candidate_id, hoặc cả opening_name_or_id và candidate_name")
+        raise ValueError("Vui lòng cung cấp ID ứng viên, HOẶC cung cấp cả Tên ứng viên và Vị trí ứng tuyển.")
 
     tool_input = {}
     if candidate_id:
@@ -1926,7 +1926,7 @@ def ba_mindset_analysis(
     mindset mở để đón nhận thay đổi trong thời đại số không, có chuyển hóa được không, thay vì phân tích mặt nổi.
     """
     if not candidate_id and not (opening_name_or_id and candidate_name):
-        raise ValueError("Phải cung cấp candidate_id, hoặc cả opening_name_or_id và candidate_name")
+        raise ValueError("Vui lòng cung cấp ID ứng viên, HOẶC cung cấp cả Tên ứng viên và Vị trí ứng tuyển.")
 
     tool_input = {}
     if candidate_id:
@@ -1974,7 +1974,7 @@ def deep_interview_questions(
     Phân tích chuyên sâu ứng viên này (ưu tiên vị trí Trợ lý số & AI) để đưa ra các câu hỏi khai thác tối đa năng lực và lắng nghe ở tầng sâu nhất.
     """
     if not candidate_id and not (opening_name_or_id and candidate_name):
-        raise ValueError("Phải cung cấp candidate_id, hoặc cả opening_name_or_id và candidate_name")
+        raise ValueError("Vui lòng cung cấp ID ứng viên, HOẶC cung cấp cả Tên ứng viên và Vị trí ứng tuyển.")
 
     tool_input = {}
     if candidate_id:
