@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from typing import List, Optional, Any, Dict
 from fastmcp import FastMCP
+from fastmcp.prompts.prompt import Message, PromptMessage, TextContent
 
 from datetime import datetime, date
 import requests
@@ -1748,7 +1749,363 @@ def get_openings_list() -> str:
         return f"Lỗi khi lấy danh sách openings: {str(e)}"
 
 
+# =================================================================
+# MCP Prompts - Deep Candidate Analysis
+# =================================================================
+
+@mcp.prompt(
+    name="analyze_candidate_full_profile",
+    description="Phân tích toàn diện hồ sơ ứng viên: test, form, CV, JD để xác minh năng lực thực sự và độ phù hợp với Aplus",
+    tags={"analysis", "candidate", "deep-insight"}
+)
+def analyze_candidate_full_profile(
+    candidate_id: Optional[str] = None,
+    opening_name_or_id: Optional[str] = None,
+    candidate_name: Optional[str] = None
+) -> str:
+    """
+    Lấy các thông tin về bài test, form điền thông tin, CV, JD của vị trí... 
+    để phân tích kỹ lưỡng các dữ liệu để phát hiện xem năng lực của ứng viên có như trên CV không, 
+    đủ giỏi chưa, và có phù hợp với Aplus không. Lắng nghe ở tầng sâu.
+    
+    Args:
+        candidate_id: ID ứng viên (ưu tiên nếu có)
+        opening_name_or_id: Tên hoặc ID vị trí tuyển dụng (cần nếu không có candidate_id)
+        candidate_name: Tên ứng viên (cần nếu không có candidate_id)
+    """
+    # Validate inputs
+    if not candidate_id and not (opening_name_or_id and candidate_name):
+        return "Vui lòng cung cấp candidate_id HOẶC cả opening_name_or_id VÀ candidate_name để phân tích."
+    
+    # Gọi tool để lấy dữ liệu ứng viên
+    try:
+        candidate_data = get_candidate_details_tool(
+            candidate_id=[candidate_id] if candidate_id else None,
+            opening_name_or_id=opening_name_or_id,
+            candidate_name=candidate_name
+        )
+        
+        # Lấy JD của vị trí
+        jd_data = None
+        if candidate_id or opening_name_or_id:
+            # Lấy opening_id từ candidate_data hoặc opening_name_or_id
+            opening_to_query = opening_name_or_id
+            if isinstance(candidate_data, dict):
+                for opening_key, candidates in candidate_data.items():
+                    if candidates and len(candidates) > 0:
+                        opening_to_query = candidates[0].get('opening_id', opening_name_or_id)
+                        break
+            
+            if opening_to_query:
+                jd_data = get_job_description(opening_to_query)
+        
+        # Format prompt message
+        prompt_text = f"""Bạn là chuyên gia phân tích hồ sơ ứng viên cho Aplus. Hãy phân tích toàn diện hồ sơ sau:
+
+=== DỮ LIỆU ỨNG VIÊN ===
+{candidate_data}
+
+=== MÔ TẢ CÔNG VIỆC (JD) ===
+{jd_data if jd_data else "Không có JD"}
+
+=== YÊU CẦU PHÂN TÍCH ===
+Hãy phân tích KỸ LƯỠNG và LẮNG NGHE Ở TẦNG SÂU để trả lời:
+
+1. **Xác minh năng lực thực tế vs CV:**
+   - Các kỹ năng/kinh nghiệm trên CV có được thể hiện qua bài test không?
+   - Câu trả lời trong form và test có nhất quán với CV không?
+   - Phát hiện sự khác biệt (nếu có) giữa CV và năng lực thực tế qua test
+
+2. **Đánh giá mức độ giỏi:**
+   - Ứng viên có đủ giỏi cho vị trí này không? Dựa trên đâu?
+   - Điểm mạnh và điểm yếu cụ thể là gì?
+   - So với yêu cầu JD, ứng viên đạt được bao nhiêu %?
+
+3. **Độ phù hợp với Aplus:**
+   - Văn hóa làm việc, giá trị của ứng viên có align với Aplus không?
+   - Khả năng thích nghi và phát triển trong môi trường Aplus?
+   - Rủi ro tiềm ẩn (nếu có)?
+
+4. **Kết luận và khuyến nghị:**
+   - Nên tiếp tục phỏng vấn hay không?
+   - Các câu hỏi cần làm rõ thêm trong phỏng vấn?
+"""
+        
+        return prompt_text
+    except Exception as e:
+        return f"Lỗi khi lấy dữ liệu ứng viên: {str(e)}"
+
+
+@mcp.prompt(
+    name="show_unseen_potential",
+    description="Khám phá tiềm năng ẩn của ứng viên mà CV và bài test đơn giản chưa thể hiện được",
+    tags={"analysis", "potential", "deep-insight"}
+)
+def show_unseen_potential(
+    candidate_id: Optional[str] = None,
+    opening_name_or_id: Optional[str] = None,
+    candidate_name: Optional[str] = None
+) -> str:
+    """
+    Cả CV và bài test còn trả lời đơn giản chưa nhận thấy được năng lực thực sự của ứng viên.
+    Vậy có cách nào để show ra năng lực thực của ứng viên từ tất cả thông tin từ bài test, 
+    đến thông tin điền form, đến CV của ứng viên, hoặc có gì đó phát hiện ra là tiềm năng không?
+    
+    Args:
+        candidate_id: ID ứng viên (ưu tiên nếu có)
+        opening_name_or_id: Tên hoặc ID vị trí tuyển dụng (cần nếu không có candidate_id)
+        candidate_name: Tên ứng viên (cần nếu không có candidate_id)
+    """
+    # Validate inputs
+    if not candidate_id and not (opening_name_or_id and candidate_name):
+        return "Vui lòng cung cấp candidate_id HOẶC cả opening_name_or_id VÀ candidate_name để phân tích."
+    
+    try:
+        candidate_data = get_candidate_details_tool(
+            candidate_id=[candidate_id] if candidate_id else None,
+            opening_name_or_id=opening_name_or_id,
+            candidate_name=candidate_name
+        )
+        
+        prompt_text = f"""Bạn là chuyên gia tâm lý học và phân tích hành vi ứng viên. Hãy DÒ TÌM TIỀM NĂNG ẨN từ dữ liệu:
+
+=== DỮ LIỆU ỨNG VIÊN ===
+{candidate_data}
+
+=== YÊU CẦU PHÂN TÍCH SÂU ===
+CV và bài test thường chỉ phản ánh bề nổi. Hãy phân tích TIỀM NĂNG ẨN:
+
+1. **Phát hiện năng lực thực từ dữ liệu:**
+   - Phong cách viết/trả lời trong test và form cho thấy gì về tư duy?
+   - Cách diễn đạt, cấu trúc câu trả lời phản ánh điều gì?
+   - Những từ khóa, ví dụ cụ thể nào cho thấy kinh nghiệm thực?
+
+2. **Khám phá tiềm năng chưa được khai thác:**
+   - Có dấu hiệu nào về khả năng học hỏi nhanh?
+   - Có xu hướng tự học, tò mò, sáng tạo không?
+   - Những kỹ năng mềm/cứng nào có thể phát triển mạnh?
+
+3. **Đọc giữa các dòng:**
+   - Động lực thực sự của ứng viên là gì?
+   - Giá trị cốt lõi mà họ theo đuổi?
+   - Dấu hiệu về sự cam kết dài hạn?
+
+4. **Pattern và insight đặc biệt:**
+   - Có pattern nào lặp lại trong cách trả lời?
+   - Điểm khác biệt độc đáo so với ứng viên khác?
+   - Dấu hiệu về tiềm năng lãnh đạo/chuyên môn sâu?
+
+5. **Kết luận về tiềm năng:**
+   - TẦM NHÌN về ứng viên này sau 6 tháng, 1 năm, 2 năm?
+   - Tiềm năng phát triển thành người như thế nào?
+   - Đầu tư vào ứng viên này có xứng đáng không? Tại sao?
+"""
+        
+        return prompt_text
+    except Exception as e:
+        return f"Lỗi khi lấy dữ liệu ứng viên: {str(e)}"
+
+
+@mcp.prompt(
+    name="ba_mindset_analysis",
+    description="Phân tích INSIGHT sâu về BA mindset, tư duy hệ thống, mindset mở trong thời đại số",
+    tags={"analysis", "ba", "mindset", "digital-transformation"}
+)
+def ba_mindset_analysis(
+    candidate_id: Optional[str] = None,
+    opening_name_or_id: Optional[str] = None,
+    candidate_name: Optional[str] = None
+) -> str:
+    """
+    PHÂN TÍCH VỚI MỨC INSIGHT SÂU HƠN, xem thử ứng viên có khả năng về BA, 
+    mindset hệ thống, mindset mở để đón nhận thay đổi trong thời đại số không, 
+    có chuyển hóa được không, thay vì phân tích mặt nổi.
+    
+    Args:
+        candidate_id: ID ứng viên (ưu tiên nếu có)
+        opening_name_or_id: Tên hoặc ID vị trí tuyển dụng (cần nếu không có candidate_id)
+        candidate_name: Tên ứng viên (cần nếu không có candidate_id)
+    """
+    # Validate inputs
+    if not candidate_id and not (opening_name_or_id and candidate_name):
+        return "Vui lòng cung cấp candidate_id HOẶC cả opening_name_or_id VÀ candidate_name để phân tích."
+    
+    try:
+        candidate_data = get_candidate_details_tool(
+            candidate_id=[candidate_id] if candidate_id else None,
+            opening_name_or_id=opening_name_or_id,
+            candidate_name=candidate_name
+        )
+        
+        prompt_text = f"""Bạn là chuyên gia phân tích BA Mindset và Digital Transformation. Hãy PHÂN TÍCH INSIGHT SÂU:
+
+=== DỮ LIỆU ỨNG VIÊN ===
+{candidate_data}
+
+=== PHÂN TÍCH INSIGHT SÂU (KHÔNG CHỈ MẶT NỔI) ===
+
+1. **Khả năng Business Analysis (BA):**
+   - Có tư duy phân tích vấn đề hệ thống không? Dấu hiệu?
+   - Cách tiếp cận vấn đề: top-down hay bottom-up?
+   - Khả năng kết nối giữa business needs và technical solutions?
+   - Có đặt câu hỏi "Tại sao?" đủ sâu không?
+
+2. **Mindset Hệ Thống (Systems Thinking):**
+   - Nhìn thấy mối liên hệ giữa các phần của hệ thống?
+   - Hiểu được nguyên nhân - kết quả - tác động lan tỏa?
+   - Có tư duy end-to-end hay chỉ focus vào 1 điểm?
+   - Dấu hiệu về khả năng tư duy trừu tượng và tổng quát hóa?
+
+3. **Mindset Mở trong Thời Đại Số:**
+   - Thái độ với công nghệ mới, AI, automation?
+   - Có sẵn sàng học hỏi và thay đổi không?
+   - Growth mindset vs Fixed mindset: dấu hiệu cụ thể?
+   - Có tò mò, chủ động khám phá xu hướng mới không?
+
+4. **Khả Năng Chuyển Hóa Số (Digital Transformation):**
+   - Hiểu bản chất của chuyển đổi số hay chỉ là buzzword?
+   - Có kinh nghiệm/insight về digital tools, workflows?
+   - Khả năng áp dụng công nghệ để giải quyết vấn đề thực tế?
+   - Sẵn sàng thay đổi quy trình, tư duy làm việc cũ?
+
+5. **Dấu Hiệu Tiềm Năng BA/Digital:**
+   - Pattern trong cách suy nghĩ và giải quyết vấn đề?
+   - Mức độ structured thinking trong câu trả lời?
+   - Khả năng storytelling và communication logic?
+   - Có "sense" về data, metrics, measurement không?
+
+6. **Đánh Giá Khả Năng Phát Triển:**
+   - Nếu được đào tạo, liệu có thể trở thành BA giỏi?
+   - Rào cản lớn nhất để chuyển đổi tư duy?
+   - Timeline và lộ trình phát triển phù hợp?
+   - Có đáng đầu tư vào việc coaching/mentoring không?
+
+7. **Kết Luận Insight:**
+   - Core strength và core weakness về tư duy?
+   - Fit với văn hóa digital-first company như thế nào?
+   - Khuyến nghị: Hire/Pass/Maybe và lý do sâu xa?
+"""
+        
+        return prompt_text
+    except Exception as e:
+        return f"Lỗi khi lấy dữ liệu ứng viên: {str(e)}"
+
+
+@mcp.prompt(
+    name="deep_interview_questions",
+    description="Tạo câu hỏi phỏng vấn chuyên sâu cho Trợ lý số & AI, lắng nghe tầng sâu nhất",
+    tags={"analysis", "interview", "digital-assistant", "deep-listening"}
+)
+def deep_interview_questions(
+    candidate_id: Optional[str] = None,
+    opening_name_or_id: Optional[str] = None,
+    candidate_name: Optional[str] = None
+) -> str:
+    """
+    Hãy phân tích chuyên sâu nhất về ứng viên này ở vị trí Trợ lý số & AI 
+    để đưa ra những câu hỏi khai thác tối đa về ứng viên này, 
+    lắng nghe ở tầng sâu nhất để có thể hiểu ứng viên.
+    
+    Args:
+        candidate_id: ID ứng viên (ưu tiên nếu có)
+        opening_name_or_id: Tên hoặc ID vị trí tuyển dụng (cần nếu không có candidate_id)
+        candidate_name: Tên ứng viên (cần nếu không có candidate_id)
+    """
+    # Validate inputs
+    if not candidate_id and not (opening_name_or_id and candidate_name):
+        return "Vui lòng cung cấp candidate_id HOẶC cả opening_name_or_id VÀ candidate_name để phân tích."
+    
+    try:
+        candidate_data = get_candidate_details_tool(
+            candidate_id=[candidate_id] if candidate_id else None,
+            opening_name_or_id=opening_name_or_id,
+            candidate_name=candidate_name
+        )
+        
+        # Lấy JD của vị trí
+        jd_data = None
+        if candidate_id or opening_name_or_id:
+            opening_to_query = opening_name_or_id
+            if isinstance(candidate_data, dict):
+                for opening_key, candidates in candidate_data.items():
+                    if candidates and len(candidates) > 0:
+                        opening_to_query = candidates[0].get('opening_id', opening_name_or_id)
+                        break
+            
+            if opening_to_query:
+                jd_data = get_job_description(opening_to_query)
+        
+        prompt_text = f"""Bạn là chuyên gia phỏng vấn cho vị trí Trợ lý số & AI. Hãy LẮNG NGHE Ở TẦNG SÂU NHẤT:
+
+=== DỮ LIỆU ỨNG VIÊN ===
+{candidate_data}
+
+=== MÔ TẢ CÔNG VIỆC (JD) ===
+{jd_data if jd_data else "Không có JD"}
+
+=== YÊU CẦU ===
+Dựa trên dữ liệu ứng viên, hãy:
+
+1. **PHÂN TÍCH CHUYÊN SÂU về ứng viên:**
+   - Điểm mạnh ẩn và điểm yếu chưa được tiết lộ?
+   - Gap kiến thức/kỹ năng cần làm rõ?
+   - Những câu trả lời trong test/form tạo ra câu hỏi gì?
+   - Red flags hoặc Green flags cần confirm?
+
+2. **ĐƯA RA CÂU HỎI KHAI THÁC TỐI ĐA:**
+   
+   **A. Về Năng lực Kỹ thuật & AI:**
+   - Câu hỏi về kinh nghiệm thực tế với AI tools
+   - Câu hỏi tình huống: xử lý vấn đề với AI như thế nào?
+   - Đo độ sâu hiểu biết về automation, workflows
+   
+   **B. Về Mindset & Tư duy:**
+   - Câu hỏi về cách học hỏi công nghệ mới
+   - Câu hỏi về thái độ với thay đổi, thất bại
+   - Tình huống: xung đột giữa quy trình cũ vs cách mới
+   
+   **C. Về Fit với Aplus Culture:**
+   - Giá trị cốt lõi: làm việc nhóm, tự chủ, trách nhiệm
+   - Động lực làm việc: ngắn hạn và dài hạn
+   - Vision cá nhân trong 2-3 năm tới
+   
+   **D. Về Vai trò Trợ lý số & AI:**
+   - Hiểu vai trò này như thế nào? Kỳ vọng gì?
+   - Cách hỗ trợ team/leader bằng công nghệ?
+   - Ví dụ cụ thể đã làm (nếu có) hoặc sẽ làm gì?
+
+3. **CÂU HỎI LẮNG NGHE TẦNG SÂU:**
+   
+   Tạo 5-7 câu hỏi mở (open-ended) giúp:
+   - Hiểu động lực thực sự và giá trị cốt lõi
+   - Phát hiện cách tư duy và giải quyết vấn đề
+   - Đo lường khả năng tự nhận thức (self-awareness)
+   - Xem khả năng reflection và learning agility
+   
+   **Mỗi câu hỏi phải:**
+   - Có mục đích rõ ràng (test cái gì?)
+   - Khó "fake" câu trả lời sẵn
+   - Tạo không gian cho ứng viên thể hiện sâu
+   - Có follow-up questions để đào sâu hơn
+
+4. **LỘ TRÌNH PHỎNG VẤN:**
+   - Thứ tự câu hỏi: từ dễ đến khó, từ nông đến sâu
+   - Điểm cần quan sát trong cách trả lời
+   - Red flags cần lưu ý
+   - Green signals cho thấy ứng viên phù hợp
+
+5. **KẾT LUẬN:**
+   - Top 3 điều quan trọng nhất cần confirm trong interview
+   - Tiêu chí đánh giá pass/fail sau phỏng vấn
+   - Khuyến nghị về cách tiếp cận ứng viên này
+"""
+        
+        return prompt_text
+    except Exception as e:
+        return f"Lỗi khi lấy dữ liệu ứng viên: {str(e)}"
+
 
 
 if __name__ == "__main__":
     mcp.run()
+
