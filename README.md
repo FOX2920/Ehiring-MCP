@@ -44,10 +44,10 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # Optional backup Gemini API keys (comma-separated)
 GEMINI_API_KEY_DU_PHONG=key1,key2,key3
 
-# Optional - for test results from Google Sheets
+# Required - for test results from Google Sheets
 GOOGLE_SHEET_SCRIPT_URL=your_google_apps_script_url
 
-# Optional - for user information in reviews
+# Required - for user information in reviews
 ACCOUNT_API_KEY=your_account_api_key
 ```
 
@@ -453,11 +453,11 @@ Automatically enriches reviews with:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `BASE_API_KEY` | ✅ Yes | Base.vn API access token |
+| `BASE_API_KEY` | ✅ Yes | Access token of the Base Ehiring platform in Base.vn |
 | `GEMINI_API_KEY` | ✅ Yes | Google Gemini API key for CV extraction |
 | `GEMINI_API_KEY_DU_PHONG` | ❌ No | Backup Gemini API keys (comma-separated) |
-| `GOOGLE_SHEET_SCRIPT_URL` | ❌ No | Google Apps Script URL for test results |
-| `ACCOUNT_API_KEY` | ❌ No | Base Account API key for user info |
+| `GOOGLE_SHEET_SCRIPT_URL` | ✅ Yes | Google Apps Script URL for test results |
+| `ACCOUNT_API_KEY` | ✅ Yes | Access token of the Base Account platform in Base.vn |
 
 ## 🔍 Error Handling
 
