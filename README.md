@@ -11,14 +11,13 @@ A powerful Model Context Protocol (MCP) server for interacting with Base.vn Hiri
 - **Feedback Analysis**: Retrieve and analyze candidate feedback data
 - **Offer Letter Management**: Extract offer letters from candidate messages
 - **Smart Search**: Cosine similarity-based fuzzy matching for openings and candidates
-- **CV Text Extraction**: Automatic CV parsing using pdfplumber and Google Gemini AI
+- **CV Text Extraction**: Automatic CV parsing using pdfplumber
 - **Caching**: Built-in 5-minute cache for improved performance
 
 ## 📋 Prerequisites
 
 - Python 3.8+
 - Base.vn API access
-- Google Gemini API key (for CV text extraction)
 - Google Apps Script URL (optional, for test results)
 - Base Account API key (optional, for user information)
 
@@ -430,8 +429,6 @@ This allows flexible queries like "Backend Dev" matching "Backend Developer".
 
 The server automatically extracts text from candidate CVs using:
 1. **Primary**: pdfplumber (fast, local)
-2. **Fallback**: Google Gemini AI (for complex PDFs)
-3. **Backup API Keys**: Automatic rotation on rate limits
 
 ### Caching System
 
@@ -454,8 +451,6 @@ Automatically enriches reviews with:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `BASE_API_KEY` | ✅ Yes | Access token of the Base Ehiring platform in Base.vn |
-| `GEMINI_API_KEY` | ✅ Yes | Google Gemini API key for CV extraction |
-| `GEMINI_API_KEY_DU_PHONG` | ❌ No | Backup Gemini API keys (comma-separated) |
 | `GOOGLE_SHEET_SCRIPT_URL` | ✅ Yes | Google Apps Script URL for test results |
 | `ACCOUNT_API_KEY` | ✅ Yes | Access token of the Base Account platform in Base.vn |
 

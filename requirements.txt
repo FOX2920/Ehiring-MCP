@@ -2,7 +2,6 @@ pandas
 requests
 beautifulsoup4
 numpy
-google-genai
 pdfplumber
 pydantic
 openpyxl

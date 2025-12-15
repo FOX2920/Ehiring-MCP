@@ -18,8 +18,6 @@ except ImportError:
     DOCX_AVAILABLE = False
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-from google import genai
-from google.genai import types
 from pytz import timezone
 import re
 from html import unescape
@@ -35,13 +33,8 @@ BASE_API_KEY = os.getenv('BASE_API_KEY')
 if not BASE_API_KEY:
     raise ValueError("BASE_API_KEY chưa được cấu hình trong file .env")
 
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY chưa được cấu hình trong file .env")
+# Gemini API Key removed
 
-# Parse GEMINI_API_KEY_DU_PHONG từ string (comma-separated) sang list
-GEMINI_API_KEY_DU_PHONG_STR = os.getenv('GEMINI_API_KEY_DU_PHONG', '')
-GEMINI_API_KEY_DU_PHONG = [key.strip() for key in GEMINI_API_KEY_DU_PHONG_STR.split(',') if key.strip()] if GEMINI_API_KEY_DU_PHONG_STR else []
 
 # Google Sheet Script URL (optional) - để lấy dữ liệu bài test
 GOOGLE_SHEET_SCRIPT_URL = os.getenv('GOOGLE_SHEET_SCRIPT_URL', None)
@@ -390,78 +383,15 @@ def get_offer_letter(candidate_id, api_key):
         # Nếu có lỗi, trả về None (không làm gián đoạn flow chính)
         return None
 
-def extract_text_from_cv_url_with_genai(url):
-    """Trích xuất text từ CV URL, ưu tiên pdfplumber, fallback về Google Gemini AI"""
+def extract_text_from_cv_url(url):
+    """Trích xuất text từ CV URL, sử dụng pdfplumber"""
     if not url:
         return None
     
-    # Tạm thời ưu tiên sử dụng pdfplumber trước
+    # Sử dụng pdfplumber
     pdf_text = extract_text_from_pdf(url)
     if pdf_text:
         return pdf_text
-    
-    # Nếu pdfplumber không thành công, fallback về Gemini AI
-    api_keys_to_try = [GEMINI_API_KEY] + GEMINI_API_KEY_DU_PHONG
-    
-    for idx, api_key in enumerate(api_keys_to_try):
-        try:
-            client = genai.Client(api_key=api_key)
-            
-            model = "gemini-flash-lite-latest"
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=f"{url}\nĐọc text từ url"),
-                    ],
-                ),
-            ]
-            tools = [
-                types.Tool(url_context=types.UrlContext()),
-            ]
-            generate_content_config = types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(
-                    thinking_budget=0,
-                ),
-                tools=tools,
-                system_instruction=[
-                    types.Part.from_text(text="Nội dung text trong link"),
-                ],
-            )
-            
-            # Thu thập tất cả text từ stream
-            text_content = ""
-            for chunk in client.models.generate_content_stream(
-                model=model,
-                contents=contents,
-                config=generate_content_config,
-            ):
-                if chunk.text:
-                    text_content += chunk.text
-            
-            if text_content.strip():
-                return text_content.strip()
-                
-        except Exception as e:
-            error_str = str(e).lower()
-            error_repr = repr(e).lower()
-            
-            # Kiểm tra nếu là lỗi 429 (rate limit)
-            is_rate_limit = (
-                '429' in error_str or 
-                '429' in error_repr or
-                'rate limit' in error_str or
-                'rate_limit' in error_str or
-                'quota exceeded' in error_str or
-                'resource exhausted' in error_str
-            )
-            
-            # Nếu là lỗi 429 và còn API key khác, thử key tiếp theo
-            if is_rate_limit and idx < len(api_keys_to_try) - 1:
-                continue
-            
-            # Nếu không phải lỗi 429 hoặc đã hết key, tiếp tục thử key tiếp theo
-            continue
     
     # Nếu tất cả đều fail, trả về None
     return None
@@ -658,7 +588,7 @@ def get_candidates_for_opening(opening_id, api_key, start_date=None, end_date=No
             # Chỉ trích xuất cv_text từ CV URL sau khi đã lọc xong (tiết kiệm request Gemini)
             cv_text = None
             if cv_url:
-                cv_text = extract_text_from_cv_url_with_genai(cv_url)
+                cv_text = extract_text_from_cv_url(cv_url)
             
             # Xử lý evaluations để lấy reviews chi tiết
             reviews = process_evaluations(candidate.get('evaluations', []))
@@ -1457,7 +1387,7 @@ def get_candidate_details_tool(
                 # Trích xuất cv_text từ cv_url nếu có
                 cv_url = candidate_data.get('cv_url')
                 if cv_url:
-                    cv_text = extract_text_from_cv_url_with_genai(cv_url)
+                    cv_text = extract_text_from_cv_url(cv_url)
                     candidate_data['cv_text'] = cv_text
                 
                 # Lấy dữ liệu bài test từ Google Sheet
