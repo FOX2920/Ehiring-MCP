@@ -1156,39 +1156,11 @@ def get_candidate_details(candidate_id, api_key):
 # MCP Tools
 # =================================================================
 
-# Register UI Resource
-@mcp.resource("ui://widget/index.html")
-def get_widget_ui() -> str:
-    """Returns the HTML for the Ehiring widget."""
-    try:
-        # Check if dist files exist
-        if not os.path.exists("web/dist/index.js") or not os.path.exists("web/dist/index.css"):
-            return "UI build artifacts not found. Please run 'npm run build' in web/ directory."
-            
-        with open("web/dist/index.js", "r", encoding="utf-8") as f:
-            js_content = f.read()
-        with open("web/dist/index.css", "r", encoding="utf-8") as f:
-            css_content = f.read()
-            
-        return f"""
-<div id="root"></div>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-{css_content}
-</style>
-<script type="module">
-{js_content}
-</script>
-        """
-    except Exception as e:
-        return f"Error loading UI: {str(e)}"
-
 @mcp.tool(
     name="get_job_description",
     description="Lấy JD (Job Description) theo opening_name hoặc opening_id.",
     tags={"hiring", "job", "description"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -1205,7 +1177,6 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
         # Nếu không có opening_name_or_id, trả về tất cả các opening có status 10 (chỉ id và name)
         if not opening_name_or_id:
             return {
-                "type": "job_description",
                 "success": True,
                 "query": None,
                 "message": "Trả về tất cả các opening có status 10.",
@@ -1222,7 +1193,6 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
         # Nếu không tìm thấy opening cụ thể, trả về tất cả các opening có status 10 (chỉ id và name)
         if not opening_id:
             return {
-                "type": "job_description",
                 "success": True,
                 "query": opening_name_or_id,
                 "message": f"Không tìm thấy vị trí phù hợp với '{opening_name_or_id}'. Trả về tất cả các opening có status 10.",
@@ -1243,7 +1213,6 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
         # Nếu vẫn không tìm thấy JD cụ thể, trả về tất cả các opening có status 10 (chỉ id và name)
         if not jd:
             return {
-                "type": "job_description",
                 "success": True,
                 "query": opening_name_or_id,
                 "opening_id": opening_id,
@@ -1258,7 +1227,6 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
         stages = get_opening_stages(opening_id, BASE_API_KEY)
         
         return {
-            "type": "job_description",
             "success": True,
             "query": opening_name_or_id,
             "opening_id": opening_id,
@@ -1274,8 +1242,7 @@ def get_job_description(opening_name_or_id: Optional[str] = None) -> Dict[str, A
     name="get_candidates_by_opening",
     description="Lấy tất cả ứng viên theo opening_name hoặc opening_id (bao gồm cv_text).",
     tags={"hiring", "candidate", "list"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_candidates_by_opening(
     opening_name_or_id: str,
@@ -1325,7 +1292,6 @@ def get_candidates_by_opening(
         job_description = jd['job_description'] if jd else None
         
         return {
-            "type": "candidate_list",
             "success": True,
             "query": opening_name_or_id,
             "opening_id": opening_id,
@@ -1344,8 +1310,7 @@ def get_candidates_by_opening(
     name="get_interviews_by_opening",
     description="Lấy lịch phỏng vấn, có thể lọc theo opening_name hoặc opening_id.",
     tags={"hiring", "interview", "schedule"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_interviews_by_opening(
     opening_name_or_id: Optional[str] = None,
@@ -1396,7 +1361,6 @@ def get_interviews_by_opening(
         )
         
         return {
-            "type": "interview_schedule",
             "success": True,
             "query": opening_name_or_id,
             "date": date,
@@ -1415,8 +1379,7 @@ def get_interviews_by_opening(
     name="get_candidate_details",
     description="Lấy chi tiết ứng viên. Hỗ trợ nhiều candidate_id (dạng list) hoặc opening_name_or_id + nhiều candidate_name (phân cách bằng dấu phẩy).",
     tags={"hiring", "candidate", "detail"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_candidate_details_tool(
     candidate_id: Optional[List[str]] = None,
@@ -1558,7 +1521,6 @@ def get_candidate_details_tool(
         openings_list = list(openings_map.values())
         
         result = {
-            "type": "candidate_detail",
             "success": True,
             "total_candidates": len(all_candidates_data),
             "total_openings": len(openings_list),
@@ -1577,8 +1539,7 @@ def get_candidate_details_tool(
     name="get_offer_letter",
     description="Lấy offer letter của ứng viên. Có thể tìm bằng candidate_id, hoặc bằng opening_name_or_id + candidate_name.",
     tags={"hiring", "candidate", "offer"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_offer_letter_tool(
     candidate_id: Optional[str] = None,
@@ -1693,7 +1654,6 @@ def get_offer_letter_tool(
                     break
         
         result = {
-            "type": "offer_letter",
             "success": True,
             "candidate_id": found_candidate_id,
             "candidate_name": candidate_name_result,
@@ -1715,13 +1675,11 @@ def get_offer_letter_tool(
     name="get_server_status",
     description="Kiểm tra trạng thái Base Hiring MCP server.",
     tags={"system", "status"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_server_status() -> Dict[str, str]:
     """Kiểm tra trạng thái Base Hiring MCP server."""
     return {
-        "type": "server_status",
         "status": "running",
         "server": "Base Hiring Assistant MCP Server",
         "version": "1.0.0"
@@ -1731,8 +1689,7 @@ def get_server_status() -> Dict[str, str]:
     name="get_feedback_data",
     description="Lấy dữ liệu feedback của các ứng viên từ Google Sheet. Có thể lọc theo ngày bắt đầu và vị trí ứng tuyển (similarity).",
     tags={"hiring", "feedback", "test"},
-    annotations={"readOnlyHint": True},
-    _meta={"openai/outputTemplate": "ui://widget/index.html"}
+    annotations={"readOnlyHint": True}
 )
 def get_feedback_data(
     start_date: Optional[str] = None,
@@ -1756,14 +1713,12 @@ def get_feedback_data(
                 msg += " phù hợp với tiêu chí lọc"
             
             return {
-                "type": "feedback_data",
                 "success": False,
                 "message": msg,
                 "data": {}
             }
         
         return {
-            "type": "feedback_data",
             "success": True,
             "message": f"Đã lấy được dữ liệu feedback cho {len(feedback_data)} câu hỏi.",
             "total_questions": len(feedback_data),
