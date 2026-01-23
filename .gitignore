@@ -53,6 +53,7 @@ Thumbs.db
 htmlcov/
 
 # Internal instructions (do not share)
+chatgpt_instructions.txt
 
 
 
