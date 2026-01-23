@@ -1,0 +1,9 @@
+fastmcp
+python-dotenv
+requests
+beautifulsoup4
+pdfplumber
+scikit-learn
+numpy
+pytz
+python-docx
